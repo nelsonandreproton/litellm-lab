@@ -8,11 +8,6 @@ x-qwen3-4b-backend: &qwen3_4b_backend
   output_cost_per_token: 0.000004   # $4 per 1M output tokens
 
 model_list:
-  # LEGACY: remove once client, tests and keys use the aliases below
-  - model_name: qwen3-4b
-    litellm_params:
-      <<: *qwen3_4b_backend
-
   # Quick answers: thinking off, Qwen's recommended non-thinking sampling
   - model_name: local-fast
     litellm_params:
