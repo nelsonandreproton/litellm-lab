@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from settings import (BACKEND_MODEL, GATEWAY, INPUT_COST_PER_TOKEN, LLAMA, MODEL,
+from settings import (BACKEND_MODELS, GATEWAY, INPUT_COST_PER_TOKEN, LLAMA, MODEL,
                       OUTPUT_COST_PER_TOKEN, REASONING_MODEL)
 
 
@@ -26,10 +26,12 @@ def test_llama_server_rejects_requests_without_key(http):
     assert http.get(f"{LLAMA}/v1/models").status_code == 401
 
 
-def test_llama_server_accepts_the_key_from_env(http, llama_key):
+def test_router_serves_exactly_the_allow_listed_models(http, llama_key):
+    # Accepts the key from .env AND serves only config/models.ini - nothing from the
+    # llama.cpp download cache (guards the LLAMA_CACHE workaround in start-router.ps1)
     r = http.get(f"{LLAMA}/v1/models", headers={"Authorization": f"Bearer {llama_key}"})
     assert r.status_code == 200
-    assert BACKEND_MODEL in [m["id"] for m in r.json()["data"]]
+    assert {m["id"] for m in r.json()["data"]} == BACKEND_MODELS
 
 
 def test_client_key_can_chat(chat, client_key):

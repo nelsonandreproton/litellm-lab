@@ -1,11 +1,20 @@
-﻿# Shared backend settings, reused by every alias below (YAML anchor)
+# Backend settings per model, reused by the aliases below (YAML anchors).
+# Both models are served by the llama.cpp router on :8080 (scripts/start-router.ps1,
+# presets in config/models.ini). Model ids = router preset names.
 x-qwen3-4b-backend: &qwen3_4b_backend
-  model: openai/qwen3-4b
+  model: openai/Qwen3-4B-Q4_K_M
   api_base: http://host.docker.internal:8080/v1
   api_key: os.environ/LLAMACPP_API_KEY
   # Notional internal pricing (not a real cost) so budgets and spend tracking work
   input_cost_per_token: 0.000001    # $1 per 1M input tokens
   output_cost_per_token: 0.000004   # $4 per 1M output tokens
+
+x-qwen3-8b-backend: &qwen3_8b_backend
+  model: openai/Qwen3-8B-Q4_K_M
+  api_base: http://host.docker.internal:8080/v1
+  api_key: os.environ/LLAMACPP_API_KEY
+  input_cost_per_token: 0.000001    # same notional price as the 4B for now (pricing per model: open decision)
+  output_cost_per_token: 0.000004
 
 model_list:
   # Quick answers: thinking off, Qwen's recommended non-thinking sampling
@@ -23,7 +32,7 @@ model_list:
   # Step-by-step reasoning: slow and token-hungry; grant to keys deliberately
   - model_name: local-reasoning
     litellm_params:
-      <<: *qwen3_4b_backend
+      <<: *qwen3_8b_backend
       temperature: 0.6
       top_p: 0.95
       extra_body:
