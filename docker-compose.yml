@@ -1,6 +1,6 @@
 ﻿services:
   db:
-    image: postgres:16
+    image: postgres:16 # floats within major 16 for security fixes; was 16.16 on 2026-11-14
     container_name: litellm-postgres
     restart: unless-stopped
     environment:
@@ -18,7 +18,8 @@
       retries: 10
 
   litellm:
-    image: docker.litellm.ai/berriai/litellm:main-stable
+    # LiteLLM 1.109.1 (was main-stable on 2026-11-14). Pinned by digest; upgrade deliberately and run tests
+    image: docker.litellm.ai/berriai/litellm@sha256:11175975a3093e05e92faee2fe2fe3412a3ae2fcaa849eb0fe25d5f0d8bcb2e9
     container_name: litellm-proxy
     restart: unless-stopped
     depends_on:
