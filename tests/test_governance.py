@@ -3,6 +3,8 @@ import time
 
 import pytest
 
+from settings import MODEL, REASONING_MODEL
+
 
 def test_budget_blocks_after_exhaustion(chat, temp_key):
     key = temp_key(max_budget=0.00001)          # less than one request costs
@@ -27,3 +29,10 @@ def test_rpm_limit_returns_429_on_the_extra_request(chat, temp_key):
     key = temp_key(rpm_limit=2)
     codes = [chat(key).status_code for _ in range(3)]
     assert codes == [200, 200, 429]
+
+
+def test_key_cannot_use_an_alias_it_was_not_granted(chat, temp_key):
+    key = temp_key(models=[MODEL])
+    assert chat(key).status_code == 200
+    r = chat(key, model=REASONING_MODEL)
+    assert r.status_code in (401, 403), r.text

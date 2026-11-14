@@ -65,11 +65,12 @@ def stack_is_up(http):
 @pytest.fixture(scope="session")
 def chat(http):
     """Send one small chat request with the given key; returns the raw httpx response."""
-    def _chat(key: str, content: str = "Reply with just: OK /no_think", max_tokens: int = 8):
+    def _chat(key: str, content: str = "Reply with just: OK", max_tokens: int = 8,
+              model: str = MODEL):
         return http.post(
             f"{GATEWAY}/v1/chat/completions",
             headers={"Authorization": f"Bearer {key}"},
-            json={"model": MODEL,
+            json={"model": model,
                   "messages": [{"role": "user", "content": content}],
                   "max_tokens": max_tokens},
         )

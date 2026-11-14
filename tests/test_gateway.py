@@ -1,8 +1,8 @@
 """Health, authentication on both layers, and cost accounting."""
 import pytest
 
-from settings import (GATEWAY, INPUT_COST_PER_TOKEN, LLAMA, MODEL,
-                      OUTPUT_COST_PER_TOKEN)
+from settings import (BACKEND_MODEL, GATEWAY, INPUT_COST_PER_TOKEN, LLAMA, MODEL,
+                      OUTPUT_COST_PER_TOKEN, REASONING_MODEL)
 
 
 def test_readiness_reports_db_connected(http):
@@ -27,7 +27,7 @@ def test_llama_server_rejects_requests_without_key(http):
 def test_llama_server_accepts_the_key_from_env(http, llama_key):
     r = http.get(f"{LLAMA}/v1/models", headers={"Authorization": f"Bearer {llama_key}"})
     assert r.status_code == 200
-    assert MODEL in [m["id"] for m in r.json()["data"]]
+    assert BACKEND_MODEL in [m["id"] for m in r.json()["data"]]
 
 
 def test_client_key_can_chat(chat, client_key):
@@ -45,3 +45,19 @@ def test_cost_header_matches_notional_pricing(chat, client_key):
     expected = (u["prompt_tokens"] * INPUT_COST_PER_TOKEN
                 + u["completion_tokens"] * OUTPUT_COST_PER_TOKEN)
     assert float(r.headers["x-litellm-response-cost"]) == pytest.approx(expected, rel=1e-6)
+
+
+def test_fast_alias_answers_without_reasoning(chat, client_key):
+    r = chat(client_key, content="Is 391 a prime number? Answer in one sentence.", max_tokens=100)
+    assert r.status_code == 200, r.text
+    msg = r.json()["choices"][0]["message"]
+    assert not msg.get("reasoning_content"), "thinking should be off for " + MODEL
+    assert msg["content"].strip()
+
+
+def test_reasoning_alias_produces_reasoning(chat, client_key):
+    # 30 tokens is enough to see reasoning start; the answer itself is not needed
+    r = chat(client_key, content="Is 391 a prime number?", max_tokens=30, model=REASONING_MODEL)
+    assert r.status_code == 200, r.text
+    assert r.json()["choices"][0]["message"].get("reasoning_content"), \
+        "thinking should be on for " + REASONING_MODEL

@@ -1,7 +1,9 @@
 """Minimal LiteLLM client: one prompt in, one answer out.
 
-Talks to the LiteLLM proxy through the OpenAI-compatible API, so nothing here
-is specific to llama.cpp or Qwen. Reads LITELLM_API_KEY from client/.env.
+Talks to the LiteLLM proxy through the OpenAI-compatible API. It only knows the
+gateway's public aliases (local-fast, local-reasoning); which model sits behind
+them, and how thinking is switched on or off, is configured in LiteLLM.
+Reads LITELLM_API_KEY from client/.env.
 """
 from __future__ import annotations
 
@@ -28,8 +30,11 @@ EXIT_AUTH = 4
 EXIT_UNREACHABLE = 5
 EXIT_TRUNCATED = 6
 
+FAST_MODEL = "local-fast"
+REASONING_MODEL = "local-reasoning"
+
 DEFAULT_MAX_TOKENS = 512
-DEFAULT_MAX_TOKENS_THINKING = 2048  # reasoning blocks are long
+DEFAULT_MAX_TOKENS_REASONING = 2048  # reasoning blocks are long
 
 
 def make_client() -> OpenAI:
@@ -50,23 +55,26 @@ def is_budget_error(err: openai.APIStatusError) -> bool:
 def main() -> int:
     p = argparse.ArgumentParser(description="Send one prompt through LiteLLM.")
     p.add_argument("prompt")
-    p.add_argument("--model", default="qwen3-4b")
+    p.add_argument("--model", default=None,
+                   help=f"gateway alias (default {FAST_MODEL})")
+    p.add_argument("--reasoning", action="store_true",
+                   help=f"shortcut for --model {REASONING_MODEL} (slow, costs more tokens)")
     p.add_argument("--max-tokens", type=int, default=None,
-                   help=f"default {DEFAULT_MAX_TOKENS}, or {DEFAULT_MAX_TOKENS_THINKING} with --think")
-    p.add_argument("--think", action="store_true",
-                   help="let Qwen3 reason before answering (costs more tokens)")
+                   help=f"default {DEFAULT_MAX_TOKENS}, or {DEFAULT_MAX_TOKENS_REASONING} with --reasoning")
     p.add_argument("--show-thinking", action="store_true",
                    help="also print the reasoning block")
     args = p.parse_args()
 
-    prompt = args.prompt if args.think else f"{args.prompt} /no_think"
-    max_tokens = args.max_tokens or (DEFAULT_MAX_TOKENS_THINKING if args.think else DEFAULT_MAX_TOKENS)
+    if args.reasoning and args.model:
+        p.error("use either --reasoning or --model, not both")
+    model = REASONING_MODEL if args.reasoning else (args.model or FAST_MODEL)
+    max_tokens = args.max_tokens or (DEFAULT_MAX_TOKENS_REASONING if args.reasoning else DEFAULT_MAX_TOKENS)
     client = make_client()
 
     try:
         raw = client.chat.completions.with_raw_response.create(
-            model=args.model,
-            messages=[{"role": "user", "content": prompt}],
+            model=model,
+            messages=[{"role": "user", "content": args.prompt}],
             max_tokens=max_tokens,
         )
     except openai.RateLimitError:  # 429 - must come before APIStatusError
@@ -90,7 +98,7 @@ def main() -> int:
 
     resp = raw.parse()
     msg = resp.choices[0].message
-    reasoning = getattr(msg, "reasoning_content", None)  # llama-server extension field
+    reasoning = getattr(msg, "reasoning_content", None)  # non-standard field, passed through by LiteLLM
 
     if args.show_thinking and reasoning:
         print("--- thinking ---")
