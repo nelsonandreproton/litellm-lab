@@ -1,4 +1,6 @@
-"""Health, authentication on both layers, and cost accounting."""
+"""Health, authentication on both layers, cost accounting, aliases and streaming."""
+import json
+
 import pytest
 
 from settings import (BACKEND_MODEL, GATEWAY, INPUT_COST_PER_TOKEN, LLAMA, MODEL,
@@ -61,3 +63,32 @@ def test_reasoning_alias_produces_reasoning(chat, client_key):
     assert r.status_code == 200, r.text
     assert r.json()["choices"][0]["message"].get("reasoning_content"), \
         "thinking should be on for " + REASONING_MODEL
+
+
+def test_streaming_sends_chunks_then_usage_then_done(http, client_key):
+    """Checks the SSE contract the client relies on, at the HTTP level."""
+    pieces, usage, done = [], None, False
+    body = {"model": MODEL, "max_tokens": 30, "stream": True,
+            "stream_options": {"include_usage": True},
+            "messages": [{"role": "user", "content": "Count from 1 to 10."}]}
+    with http.stream("POST", f"{GATEWAY}/v1/chat/completions",
+                     headers={"Authorization": f"Bearer {client_key}"}, json=body) as r:
+        assert r.status_code == 200
+        assert r.headers["content-type"].startswith("text/event-stream")
+        for line in r.iter_lines():
+            if not line.startswith("data: "):
+                continue                         # blank separators between events
+            data = line[len("data: "):]
+            if data == "[DONE]":
+                done = True
+                break
+            event = json.loads(data)
+            usage = event.get("usage") or usage
+            for choice in event.get("choices", []):
+                text = (choice.get("delta") or {}).get("content")
+                if text:
+                    pieces.append(text)
+
+    assert len(pieces) >= 2, "the answer should arrive in several pieces"
+    assert usage and usage["completion_tokens"] > 0, "include_usage should add a usage chunk"
+    assert done, "the stream should end with [DONE]"
