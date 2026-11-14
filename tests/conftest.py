@@ -8,7 +8,7 @@ import httpx
 import pytest
 from dotenv import dotenv_values
 
-from settings import GATEWAY, LLAMA, MODEL, ROOT
+from settings import GATEWAY, LLAMA, MODEL, REASONING_MODEL, ROOT
 
 
 class Secret(str):
@@ -96,3 +96,20 @@ def temp_key(http, master_key):
     yield _make
     if created:
         http.post(f"{GATEWAY}/key/delete", headers=admin, json={"keys": created})
+
+
+@pytest.fixture(scope="session")
+def suite_key(http, master_key):
+    """One generously limited key for the whole run, deleted at the end.
+
+    Functional tests use this instead of the real client key, so the suite
+    neither trips the client key's rpm_limit nor spends its budget.
+    """
+    admin = {"Authorization": f"Bearer {master_key}"}
+    body = {"key_alias": f"pytest-suite-{uuid.uuid4().hex[:8]}",
+            "models": [MODEL, REASONING_MODEL], "rpm_limit": 120, "max_budget": 0.05}
+    r = http.post(f"{GATEWAY}/key/generate", headers=admin, json=body)
+    r.raise_for_status()
+    key = Secret(r.json()["key"])
+    yield key
+    http.post(f"{GATEWAY}/key/delete", headers=admin, json={"keys": [key]})

@@ -27,16 +27,23 @@ def run_client(*args, **env_overrides):
                           env=env, timeout=180)
 
 
+def test_reads_key_from_client_env_file():
+    # The only CLI test without a key override: proves client/.env is used (1 request)
+    p = run_client("Reply with just: OK")
+    assert p.returncode == 0, p.stderr
+
+
 @pytest.mark.parametrize("mode", MODES)
-def test_success_exits_0(mode):
-    p = run_client("Reply with just: OK", *mode)
+def test_success_exits_0(mode, suite_key):
+    p = run_client("Reply with just: OK", *mode, LITELLM_API_KEY=suite_key)
     assert p.returncode == 0, p.stderr
     assert "OK" in p.stdout
 
 
 @pytest.mark.parametrize("mode", MODES)
-def test_truncated_answer_exits_6(mode):
-    p = run_client("Count from 1 to 50, separated by commas.", "--max-tokens", "5", *mode)
+def test_truncated_answer_exits_6(mode, suite_key):
+    p = run_client("Count from 1 to 50, separated by commas.", "--max-tokens", "5", *mode,
+                   LITELLM_API_KEY=suite_key)
     assert p.returncode == 6, p.stderr
     assert "WARNING" in p.stderr
 
@@ -72,11 +79,11 @@ def _fits_cp1252(text: str) -> bool:
 
 
 @pytest.mark.parametrize("mode", MODES)
-def test_non_cp1252_output_survives_a_pipe(mode):
+def test_non_cp1252_output_survives_a_pipe(mode, suite_key):
     # PYTHONIOENCODING=cp1252 simulates a default Windows machine, where Python
     # encodes piped output with the ANSI code page
     p = run_client("Reply with only the check mark emoji and nothing else.", *mode,
-                   PYTHONIOENCODING="cp1252")
+                   PYTHONIOENCODING="cp1252", LITELLM_API_KEY=suite_key)
     assert p.returncode == 0, p.stderr
     assert not _fits_cp1252(p.stdout), \
         f"inconclusive: the model replied {p.stdout!r}, which cp1252 can encode anyway"

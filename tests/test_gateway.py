@@ -33,6 +33,7 @@ def test_llama_server_accepts_the_key_from_env(http, llama_key):
 
 
 def test_client_key_can_chat(chat, client_key):
+    # The only gateway test that uses the real client key (1 request per run)
     r = chat(client_key)
     assert r.status_code == 200, r.text
     body = r.json()
@@ -40,8 +41,8 @@ def test_client_key_can_chat(chat, client_key):
     assert body["usage"]["completion_tokens"] > 0
 
 
-def test_cost_header_matches_notional_pricing(chat, client_key):
-    r = chat(client_key)
+def test_cost_header_matches_notional_pricing(chat, suite_key):
+    r = chat(suite_key)
     assert r.status_code == 200, r.text
     u = r.json()["usage"]
     expected = (u["prompt_tokens"] * INPUT_COST_PER_TOKEN
@@ -49,30 +50,30 @@ def test_cost_header_matches_notional_pricing(chat, client_key):
     assert float(r.headers["x-litellm-response-cost"]) == pytest.approx(expected, rel=1e-6)
 
 
-def test_fast_alias_answers_without_reasoning(chat, client_key):
-    r = chat(client_key, content="Is 391 a prime number? Answer in one sentence.", max_tokens=100)
+def test_fast_alias_answers_without_reasoning(chat, suite_key):
+    r = chat(suite_key, content="Is 391 a prime number? Answer in one sentence.", max_tokens=100)
     assert r.status_code == 200, r.text
     msg = r.json()["choices"][0]["message"]
     assert not msg.get("reasoning_content"), "thinking should be off for " + MODEL
     assert msg["content"].strip()
 
 
-def test_reasoning_alias_produces_reasoning(chat, client_key):
+def test_reasoning_alias_produces_reasoning(chat, suite_key):
     # 30 tokens is enough to see reasoning start; the answer itself is not needed
-    r = chat(client_key, content="Is 391 a prime number?", max_tokens=30, model=REASONING_MODEL)
+    r = chat(suite_key, content="Is 391 a prime number?", max_tokens=30, model=REASONING_MODEL)
     assert r.status_code == 200, r.text
     assert r.json()["choices"][0]["message"].get("reasoning_content"), \
         "thinking should be on for " + REASONING_MODEL
 
 
-def test_streaming_sends_chunks_then_usage_then_done(http, client_key):
+def test_streaming_sends_chunks_then_usage_then_done(http, suite_key):
     """Checks the SSE contract the client relies on, at the HTTP level."""
     pieces, usage, done = [], None, False
     body = {"model": MODEL, "max_tokens": 30, "stream": True,
             "stream_options": {"include_usage": True},
             "messages": [{"role": "user", "content": "Count from 1 to 10."}]}
     with http.stream("POST", f"{GATEWAY}/v1/chat/completions",
-                     headers={"Authorization": f"Bearer {client_key}"}, json=body) as r:
+                     headers={"Authorization": f"Bearer {suite_key}"}, json=body) as r:
         assert r.status_code == 200
         assert r.headers["content-type"].startswith("text/event-stream")
         for line in r.iter_lines():
