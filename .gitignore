@@ -1,22 +1,23 @@
-@"
+# Secrets (only the .example templates are committed)
 .env
 .env.*
 !.env.example
 
+# Model weights (large, downloaded separately)
 models/*
 !models/.gitkeep
 
+# Python
 __pycache__/
 *.py[cod]
 .venv/
 venv/
-
 .pytest_cache/
 .coverage
 htmlcov/
 
+# Editors / OS
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
-"@ | Set-Content -Encoding utf8 .gitignore
