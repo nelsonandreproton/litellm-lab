@@ -1,0 +1,5 @@
+# Line endings: LF everywhere (files are read by Linux containers and Python),
+# CRLF only for PowerShell scripts (Windows-native).
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.gguf binary
