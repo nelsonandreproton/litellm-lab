@@ -11,25 +11,36 @@ from dotenv import dotenv_values
 from settings import GATEWAY, LLAMA, MODEL, ROOT
 
 
-def _secret(path: Path, name: str) -> str:
+class Secret(str):
+    """A str that hides its value in repr().
+
+    pytest prints fixture values in failure tracebacks using repr(); this keeps
+    keys out of terminal output, logs and pasted error reports. str(), f-strings
+    and HTTP headers still get the real value.
+    """
+    def __repr__(self) -> str:
+        return f"<redacted ...{self[-4:]}>"
+
+
+def _secret(path: Path, name: str) -> Secret:
     value = dotenv_values(path).get(name)
     if not value:
         pytest.exit(f"{name} missing from {path}", returncode=2)
-    return value
+    return Secret(value)
 
 
 @pytest.fixture(scope="session")
-def master_key() -> str:
+def master_key() -> Secret:
     return _secret(ROOT / ".env", "LITELLM_MASTER_KEY")
 
 
 @pytest.fixture(scope="session")
-def llama_key() -> str:
+def llama_key() -> Secret:
     return _secret(ROOT / ".env", "LLAMACPP_API_KEY")
 
 
 @pytest.fixture(scope="session")
-def client_key() -> str:
+def client_key() -> Secret:
     return _secret(ROOT / "client" / ".env", "LITELLM_API_KEY")
 
 
@@ -78,7 +89,7 @@ def temp_key(http, master_key):
         body = {"key_alias": f"pytest-{uuid.uuid4().hex[:8]}", "models": [MODEL], **limits}
         r = http.post(f"{GATEWAY}/key/generate", headers=admin, json=body)
         r.raise_for_status()
-        created.append(r.json()["key"])
+        created.append(Secret(r.json()["key"]))
         return created[-1]
 
     yield _make
