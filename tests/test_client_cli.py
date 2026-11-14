@@ -17,10 +17,13 @@ MODES = [pytest.param([], id="stream"), pytest.param(["--no-stream"], id="blocki
 
 
 def run_client(*args, **env_overrides):
-    # UTF-8 both ways: Windows pipes default to cp1252 and choke on characters like emoji
-    env = {**os.environ, "PYTHONIOENCODING": "utf-8", **env_overrides}
+    # The client must produce UTF-8 on pipes by itself, so no PYTHONIOENCODING here
+    env = {**os.environ, **env_overrides}
     return subprocess.run([sys.executable, str(CLIENT), *args],
-                          capture_output=True, text=True, encoding="utf-8",
+                          capture_output=True, text=True,
+                          # errors="replace": keep diagnostics readable even if the
+                          # child emits something that is not valid UTF-8
+                          encoding="utf-8", errors="replace",
                           env=env, timeout=180)
 
 
@@ -58,3 +61,22 @@ def test_exhausted_budget_exits_3(mode, chat, temp_key):
 def test_unreachable_gateway_exits_5():
     p = run_client("hi", LITELLM_BASE_URL="http://127.0.0.1:4999/v1")
     assert p.returncode == 5, p.stderr
+
+
+def _fits_cp1252(text: str) -> bool:
+    try:
+        text.encode("cp1252")
+        return True
+    except UnicodeEncodeError:
+        return False
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_non_cp1252_output_survives_a_pipe(mode):
+    # PYTHONIOENCODING=cp1252 simulates a default Windows machine, where Python
+    # encodes piped output with the ANSI code page
+    p = run_client("Reply with only the check mark emoji and nothing else.", *mode,
+                   PYTHONIOENCODING="cp1252")
+    assert p.returncode == 0, p.stderr
+    assert not _fits_cp1252(p.stdout), \
+        f"inconclusive: the model replied {p.stdout!r}, which cp1252 can encode anyway"

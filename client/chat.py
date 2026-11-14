@@ -56,6 +56,20 @@ class Result:
     ended: float = 0.0
 
 
+def force_utf8_when_redirected() -> None:
+    """Emit UTF-8 on pipes and files, whatever the Windows code page is.
+
+    Python encodes redirected output with the system code page (cp1252 on most
+    Windows machines), which cannot represent emoji and many symbols, so print()
+    crashes with UnicodeEncodeError. Consoles are left alone: Python already
+    writes to them through the Unicode console API. Deliberately overrides
+    PYTHONIOENCODING for redirected streams.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if not stream.isatty() and hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
+
 def make_client() -> OpenAI:
     load_dotenv(ENV_FILE)
     key = os.getenv("LITELLM_API_KEY")
@@ -163,6 +177,7 @@ def summarise(res: Result) -> None:
 
 
 def main() -> int:
+    force_utf8_when_redirected()
     p = argparse.ArgumentParser(description="Send one prompt through LiteLLM.")
     p.add_argument("prompt")
     p.add_argument("--model", default=None,
