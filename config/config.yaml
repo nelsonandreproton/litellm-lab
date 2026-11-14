@@ -4,6 +4,9 @@
       model: openai/qwen3-4b
       api_base: http://host.docker.internal:8080/v1
       api_key: os.environ/LLAMACPP_API_KEY
+      # Notional internal pricing (not a real cost) so budgets and spend tracking work
+      input_cost_per_token: 0.000001    # $1 per 1M input tokens
+      output_cost_per_token: 0.000004   # $4 per 1M output tokens
       
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
