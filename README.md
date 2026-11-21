@@ -22,7 +22,7 @@ flowchart LR
 | **Defence in depth** | The llama.cpp router and its per-model child processes listen on `127.0.0.1` only and require an API key that only LiteLLM knows, so nothing can bypass the gateway (including browser pages via CORS). The router serves only the models in `config/models.ini`. |
 | **Governance** | Virtual keys per client, with allowed aliases, budgets, rpm/tpm limits and parallel-request caps. A notional price per token makes budgets and spend reports meaningful for a free local model. |
 | **Client** | Streams by default, distinct exit codes per failure class (rate limit vs exhausted budget vs auth vs unreachable vs truncated), Ctrl+C cancellation that reaches the GPU, UTF-8 safe when piped. |
-| **Safety net** | 25 pytest tests against the live stack (~40 s), LiteLLM pinned by image digest, secrets redacted from test output. |
+| **Safety net** | 26 pytest tests against the live stack (~50 s), LiteLLM pinned by image digest, secrets redacted from test output. |
 | **Benchmarks** | `bench/bench.py` measures time-to-first-token, tok/s and contention under identical workloads; raw results in `bench/results.jsonl`. |
 
 ## Hardware and measured performance
@@ -120,9 +120,10 @@ The LiteLLM admin UI is at http://127.0.0.1:4000/ui (user `admin`, password = ma
 - **URL-safe database passwords.** A `#` in the password made Prisma fail with `P1013 invalid port number`, and a `$` was silently swallowed by Compose interpolation. `POSTGRES_PASSWORD` only applies when the volume is first created; changing it later needs `ALTER ROLE`.
 - **Use `127.0.0.1`, not `localhost`, on Windows.** `localhost` tries IPv6 first; Docker publishes IPv4 only, so every connection waited ~2 s (measured: 2043 ms vs 4.7 ms).
 - **Thinking mode is expensive on small hardware.** Qwen3-4B found the answer to a simple question within ~450 tokens, then spent the rest of a 2048-token budget second-guessing and never answered. Non-thinking mode answered correctly in 27 tokens.
-- **Budgets can be exceeded by one request.** They are checked before a request starts, so `max_tokens` is what bounds the overshoot.
+- **Budgets can be exceeded by up to one request, also under concurrency.** With half a request of budget left, 1 of 2 and 1 of 4 simultaneous requests were admitted (`bench/budget_race.py`, guarded by a test). In-flight requests appear to reserve their `max_tokens` worst case, so `max_tokens` bounds the overshoot, and a large `max_tokens` can make a key reject other requests while it runs (LiteLLM 1.109.1, single proxy, inferred from behaviour).
 - **Cancellation propagates.** Ctrl+C in the client stopped generation on llama-server within ~64 ms through LiteLLM.
 - **Tests must not hide what they test.** Setting `PYTHONIOENCODING` in the test harness masked a crash on default (cp1252) Windows machines; sharing the real client key made the suite hit its own rate limit; pytest printed a key in a failure traceback until fixtures were wrapped in a redacting type.
+- **Laptop temperature is a benchmark variable.** The same setup ran 15-25% faster from cold than after hours of load. Compare options back to back; treat smaller differences between runs at different times as noise.
 - **Windows PowerShell 5.1:** `>` writes UTF-16, `Invoke-RestMethod` decodes charset-less responses as Latin-1, and performance counter names are localized (use WMI classes instead of `Get-Counter`).
 
 ## Serving two models: what was measured
@@ -136,8 +137,8 @@ Same prompts, same settings, medians of 3 runs (`bench/bench.py`, raw data in `b
 | **Router, both resident (`--models-max 2`)** | 9.9 GB | **0.14 / 0.14 s** | 18.9 / 8.6 | 0.59 / 0.93 s |
 | Two separate llama-servers | 9.9 GB | 0.14 / 0.15 s | 19.0 / 8.0 | 0.60 / 0.93 s |
 
-- The router costs nothing measurable compared with two plain servers, and gives each alias its own prompt cache.
-- Swapping saves ~3.9 GB but adds 2-3 s per switch and makes requests for different models wait for each other.
+- The router costs nothing measurable compared with two plain servers (re-run back to back on a cool laptop: within -4% to +6%), and gives each alias its own prompt cache.
+- Swapping saves ~3.9 GB but adds 2-3 s per switch (7-11 s after a reboot) and makes requests for different models wait for each other: with the reasoning request first, local-fast waited 42.6 s median (`bench.py --concurrent --reverse`). It also hit a shutdown race in the router once.
 - One bigger model for everything makes the everyday alias ~40% slower.
 - Answer quality was **not** part of this comparison; that is the next experiment.
 

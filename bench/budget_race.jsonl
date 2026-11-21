@@ -1,2 +1,3 @@
 {"time": "2026-11-21T15:06:36+00:00", "n": 2, "cost_per_request": 0.000287, "budget": 0.0004305, "spend_before": 0.000287, "spend_after": 0.000574, "burst_status": [422, 200], "after_status": 422}
 {"time": "2026-11-21T15:09:22+00:00", "n": 4, "cost_per_request": 0.000287, "budget": 0.0004305, "spend_before": 0.000287, "spend_after": 0.000574, "burst_status": [422, 422, 422, 200], "after_status": 422}
+{"time": "2026-11-21T15:21:47+00:00", "mode": "max-tokens", "budget": 0.004, "max_tokens": 2000, "part1_status": 200, "part1_cost": 2.4999999999999998e-05, "part2_tiny_status": 422, "part2_tiny_at_s": 3.3, "part2_long_status": 200, "part2_long_tokens": 1892, "part2_long_cost": 0.007599}

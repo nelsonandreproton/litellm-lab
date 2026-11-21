@@ -10,9 +10,19 @@ concurrent case:
   4. fire one more request -> should be blocked
   5. report status codes and final spend vs budget
 
+A second mode (--max-tokens) asks whether requests in flight are counted by their
+max_tokens (worst case) or by something smaller. Budget $0.004, below the worst case of a
+2000-token request ($0.008) but far above the real cost of a short answer:
+
+  part 1: one short-answer request with max_tokens=2000 on a fresh key
+          -> rejected means even a lone request is judged by its worst case
+  part 2: a long request (max_tokens=2000) runs; 3 s later a tiny request on the same key
+          -> tiny one rejected means the long one counts as its max_tokens while in flight
+
 Usage (from the project root, .venv active, stack up):
   python bench\\budget_race.py            # N = 2
   python bench\\budget_race.py --n 4
+  python bench\\budget_race.py --max-tokens
 """
 from __future__ import annotations
 
@@ -50,12 +60,12 @@ def delete_keys(keys: list[str]) -> None:
     httpx.post(f"{GATEWAY}/key/delete", headers=ADMIN, json={"keys": keys}, timeout=30)
 
 
-def chat(key: str) -> dict:
+def chat(key: str, prompt: str = PROMPT, max_tokens: int = MAX_TOKENS) -> dict:
     """One blocking request. Returns status, cost header, tokens and a short error."""
-    r = httpx.post(f"{GATEWAY}/v1/chat/completions", timeout=120,
+    r = httpx.post(f"{GATEWAY}/v1/chat/completions", timeout=300,
                    headers={"Authorization": f"Bearer {key}"},
-                   json={"model": MODEL, "max_tokens": MAX_TOKENS,
-                         "messages": [{"role": "user", "content": PROMPT}]})
+                   json={"model": MODEL, "max_tokens": max_tokens,
+                         "messages": [{"role": "user", "content": prompt}]})
     out = {"status": r.status_code, "cost": None, "completion_tokens": None, "error": None}
     if r.status_code == 200:
         out["cost"] = float(r.headers.get("x-litellm-response-cost", "nan"))
@@ -99,10 +109,60 @@ def burst(key: str, n: int) -> list[dict]:
     return results
 
 
+def max_tokens_mode() -> None:
+    budget, big = 0.004, 2000
+    short = "Reply with just: OK"
+    worst = big * 0.000004
+    print(f"budget ${budget:.4f}; worst case of a max_tokens={big} request >= ${worst:.4f}")
+    keys: list[str] = []
+    try:
+        # part 1: a lone short request with a big max_tokens
+        k1 = new_key(budget); keys.append(k1)
+        r1 = chat(k1, short, big)
+        print(f"\npart 1, lone request, max_tokens={big}: {r1['status']}  "
+              f"cost={r1['cost']}  tokens={r1['completion_tokens']}  {r1['error'] or ''}")
+
+        # part 2: tiny request while a long one is in flight
+        k2 = new_key(budget); keys.append(k2)
+        long_result: dict = {}
+        t = threading.Thread(target=lambda: long_result.update(chat(k2, PROMPT, big)))
+        t0 = time.monotonic()
+        t.start()
+        time.sleep(3)
+        tiny = chat(k2, short, 8)
+        tiny_at = time.monotonic() - t0
+        t.join()
+        long_s = time.monotonic() - t0
+        print(f"\npart 2, long request in flight (max_tokens={big}):")
+        print(f"  tiny request at {tiny_at:.1f} s: {tiny['status']}  cost={tiny['cost']}  {tiny['error'] or ''}")
+        print(f"  long request: {long_result['status']}  tokens={long_result['completion_tokens']}  "
+              f"cost={long_result['cost']}  took {long_s:.0f} s  {long_result['error'] or ''}")
+        if tiny_at > long_s:
+            print("WARNING: the long request finished before the tiny one was sent; part 2 is invalid")
+        spend2, _ = key_spend(k2)
+        print(f"  key spend now ${spend2:.6f} (may lag a few seconds)")
+
+        with RESULTS.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                                "mode": "max-tokens", "budget": budget, "max_tokens": big,
+                                "part1_status": r1["status"], "part1_cost": r1["cost"],
+                                "part2_tiny_status": tiny["status"], "part2_tiny_at_s": round(tiny_at, 1),
+                                "part2_long_status": long_result["status"],
+                                "part2_long_tokens": long_result["completion_tokens"],
+                                "part2_long_cost": long_result["cost"]}) + "\n")
+    finally:
+        delete_keys(keys)
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--n", type=int, default=2, help="simultaneous requests in the burst")
+    p.add_argument("--max-tokens", action="store_true",
+                   help="test whether in-flight requests count by their max_tokens")
     args = p.parse_args()
+    if args.max_tokens:
+        max_tokens_mode()
+        return
 
     keys: list[str] = []
     try:
