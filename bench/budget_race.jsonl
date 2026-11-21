@@ -1,0 +1,2 @@
+{"time": "2026-11-21T15:06:36+00:00", "n": 2, "cost_per_request": 0.000287, "budget": 0.0004305, "spend_before": 0.000287, "spend_after": 0.000574, "burst_status": [422, 200], "after_status": 422}
+{"time": "2026-11-21T15:09:22+00:00", "n": 4, "cost_per_request": 0.000287, "budget": 0.0004305, "spend_before": 0.000287, "spend_after": 0.000574, "burst_status": [422, 422, 422, 200], "after_status": 422}

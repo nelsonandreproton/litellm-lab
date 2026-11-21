@@ -8,6 +8,7 @@ Usage (from the project root, .venv active):
   python bench\\bench.py --label baseline                    # warm, grouped by alias
   python bench\\bench.py --label B --order interleaved       # alternate aliases (forces swaps in B)
   python bench\\bench.py --label A --concurrent              # both aliases at the same time
+  python bench\\bench.py --label B1 --concurrent --reverse   # same, but local-reasoning starts first
 """
 from __future__ import annotations
 
@@ -123,11 +124,14 @@ def main() -> None:
                         "interleaved: alternate aliases, no warm-up (measures switching)")
     p.add_argument("--concurrent", action="store_true",
                    help="send both aliases at the same time (measures contention)")
+    p.add_argument("--reverse", action="store_true",
+                   help="reverse the alias order (local-reasoning first); in --concurrent mode its "
+                        "thread starts first, so it wins the race for a single model slot")
     args = p.parse_args()
 
     key, delete_key = create_bench_key()
     client = OpenAI(base_url=f"{GATEWAY}/v1", api_key=key, max_retries=0, timeout=600)
-    aliases = list(WORKLOADS)
+    aliases = list(WORKLOADS)[::-1] if args.reverse else list(WORKLOADS)
     rows: list[dict] = []
     try:
         if args.concurrent:
@@ -150,7 +154,7 @@ def main() -> None:
         delete_key()
 
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    mode = "concurrent" if args.concurrent else args.order
+    mode = ("concurrent" if args.concurrent else args.order) + ("-reverse" if args.reverse else "")
     with RESULTS.open("a", encoding="utf-8") as f:
         for r in rows:
             f.write(json.dumps({"time": stamp, "label": args.label, "mode": mode, **r}) + "\n")
